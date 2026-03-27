@@ -22,6 +22,19 @@ ResumeAlign Bot is a production-ready Telegram bot that helps job seekers optimi
 
 ---
 
+## 🖼️ Screenshots
+
+<table>
+  <tr>
+    <td align="center"><kbd><img src="./assets/screenshots/Screenshot%202026-03-28%20014242.png" alt="Screenshot 1" width="260" /></kbd></td>
+    <td align="center"><kbd><img src="./assets/screenshots/Screenshot%202026-03-28%20014302.png" alt="Screenshot 2" width="260" /></kbd></td>
+    <td align="center"><kbd><img src="./assets/screenshots/Screenshot%202026-03-28%20014322.png" alt="Screenshot 3" width="260" /></kbd></td>
+    <td align="center"><kbd><img src="./assets/screenshots/Screenshot%202026-03-28%20014332.png" alt="Screenshot 4" width="260" /></kbd></td>
+  </tr>
+</table>
+
+---
+
 ## 🛠️ Tech Stack & Dependencies
 
 ### Core Runtime & Server
@@ -386,4 +399,4 @@ npm test
 
 ## 📜 License
 
-MIT License
+This project is licensed under the MIT License. See [LICENSE](./LICENSE).
