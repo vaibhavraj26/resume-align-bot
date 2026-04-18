@@ -2,6 +2,8 @@
 
 > **AI-Powered Telegram Resume Analyzer & Optimizer**
 
+[![Try on Telegram](https://img.shields.io/badge/Try_on-Telegram-blue?style=for-the-badge&logo=telegram)](https://t.me/ResumeAlignBot)
+
 ResumeAlign Bot is a production-ready Telegram bot that helps job seekers optimize their resumes for specific job descriptions. Upload your resume, paste a job description, and get instant AI-powered analysis with a match score, missing skills, actionable suggestions, and a fully rewritten ATS-optimized resume — delivered as downloadable PDF and DOCX files.
 
 ---
