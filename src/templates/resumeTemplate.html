@@ -13,58 +13,88 @@
     }
 
     body {
-      font-family: 'Segoe UI', 'Calibri', 'Arial', sans-serif;
-      font-size: 11pt;
-      line-height: 1.5;
-      color: #2d3748;
+      font-family: 'Arial', 'Calibri', sans-serif;
+      font-size: 10pt;
+      line-height: 1.35;
+      color: #000000;
       background: #ffffff;
-      padding: 0.4in 0.6in;
+      padding: 0.5in;
     }
+
+    /* ── Colors & Styles matching screenshot ──────────── */
+    .theme-blue { color: #1a365d; }
+    .theme-border { border-bottom: 2px solid #1a365d; }
+    a { color: #0000EE; text-decoration: underline; }
+    strong, b { font-weight: bold; }
+    .bold-blue { color: #1a365d; font-weight: bold; }
 
     /* ── Name / Header ─────────────────────────────────── */
     h1.name {
-      font-size: 22pt;
-      font-weight: 700;
+      font-size: 24pt;
+      font-weight: bold;
       color: #1a365d;
-      text-align: center;
-      margin-bottom: 2px;
-      letter-spacing: 0.5px;
+      margin-bottom: 4px;
     }
 
     .contact-info {
-      text-align: center;
-      font-size: 9.5pt;
-      color: #4a5568;
-      margin-bottom: 2px;
+      font-size: 10pt;
+      color: #000000;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
     }
 
     /* ── Section ───────────────────────────────────────── */
     .section {
-      margin-top: 14px;
+      margin-top: 12px;
     }
 
     .section-title {
       font-size: 12pt;
-      font-weight: 700;
+      font-weight: normal;
       color: #1a365d;
       text-transform: uppercase;
-      letter-spacing: 1px;
-      border-bottom: 2px solid #2b6cb0;
-      padding-bottom: 3px;
-      margin-bottom: 8px;
+      border-bottom: 1px solid #1a365d;
+      padding-bottom: 2px;
+      margin-bottom: 6px;
+      letter-spacing: 0.5px;
     }
 
+    /* ── Subheadings (Flexbox) ────────────────────────── */
+    .subheading-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 2px;
+    }
+    
+    .subheading-left {
+      font-weight: bold;
+      color: #1a365d;
+      font-size: 10.5pt;
+    }
+    
+    .subheading-right {
+      font-size: 10pt;
+      color: #000000;
+    }
+
+    /* ── Content ───────────────────────────────────────── */
     .section-content p {
       margin-bottom: 4px;
-      font-size: 10.5pt;
+      font-size: 10pt;
     }
 
     .bullet-item {
-      margin-left: 16px;
+      margin-left: 15px;
       margin-bottom: 3px;
-      font-size: 10.5pt;
-      position: relative;
-      padding-left: 4px;
+      font-size: 10pt;
+      text-indent: -10px;
+    }
+    .bullet-item::before {
+      content: "•";
+      display: inline-block;
+      width: 10px;
     }
 
     /* ── Score Badge (top-right) ────────────────────────── */
@@ -72,12 +102,12 @@
       position: fixed;
       top: 10px;
       right: 10px;
-      background: #2b6cb0;
+      background: #1a365d;
       color: #fff;
       font-size: 8pt;
       padding: 4px 10px;
       border-radius: 4px;
-      font-weight: 600;
+      font-weight: bold;
     }
 
     /* ── Print Optimizations ────────────────────────────── */

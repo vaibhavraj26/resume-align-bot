@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: resume-align-bot
+    env: docker
+    region: oregon # Or your preferred region
+    plan: free # Can upgrade to starter if you need more RAM
+    buildCommand: "" # Docker handles building
+    startCommand: "" # Docker handles starting
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: llama-3.3-70b-versatile
+      - key: LOG_LEVEL
+        value: info
+      - key: PORT
+        value: 3000

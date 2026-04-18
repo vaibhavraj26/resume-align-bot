@@ -79,14 +79,8 @@ function computeKeywordScore(resumeText, jdText) {
  * @returns {Object} — Final merged report
  */
 function mergeScores(keywordResult, aiResult) {
-  // Weighted average: 30% keyword-based, 70% AI-based
-  const KEYWORD_WEIGHT = 0.3;
-  const AI_WEIGHT      = 0.7;
-
-  const compositeScore = Math.round(
-    keywordResult.keywordScore * KEYWORD_WEIGHT +
-    (aiResult.score || 0) * AI_WEIGHT
-  );
+  // Use AI score as the primary score since it semantically evaluates skills instead of blindly counting stopword-filtered nouns
+  const compositeScore = aiResult.score || 0;
 
   return {
     compositeScore: Math.min(compositeScore, 100),

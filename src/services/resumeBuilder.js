@@ -4,112 +4,173 @@
  * ============================================
  * 
  * Generates optimized resume files in PDF and DOCX
- * formats from the AI-rewritten resume text.
- * 
- * - PDF: HTML template → Puppeteer → PDF
- * - DOCX: docx library → .docx file
+ * formats using custom Markdown parsing.
  */
 
 const fs   = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const puppeteer = require('puppeteer');
-const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle } = require('docx');
+const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ExternalHyperlink, TabStopType, UnderlineType } = require('docx');
 const logger = require('../utils/logger');
 
 const TEMP_DIR     = path.resolve(process.env.TEMP_DIR || './temp');
 const TEMPLATE_DIR = path.join(__dirname, '..', 'templates');
 
-/**
- * Load and populate the HTML resume template.
- * 
- * @param {string} resumeText — The rewritten resume text
- * @param {Object} analysis   — The analysis result for metadata
- * @returns {string} — Fully rendered HTML string
- */
-function buildHTML(resumeText, analysis = {}) {
-  const templatePath = path.join(TEMPLATE_DIR, 'resumeTemplate.html');
-  let html = fs.readFileSync(templatePath, 'utf-8');
+// ── CUSTOM MARKDOWN PARSER ────────────────────────────────────────
 
-  // Parse the resume text into sections
-  const sections = parseResumeIntoSections(resumeText);
+function parseInline(text) {
+  const tokens = [];
+  const regex = /(\*\*.*?\*\*|\[.*?\]\(.*?\))/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      tokens.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+    }
+    const tokenStr = match[0];
+    if (tokenStr.startsWith('**')) {
+      tokens.push({ type: 'bold', content: tokenStr.slice(2, -2) });
+    } else if (tokenStr.startsWith('[')) {
+      const closingBracket = tokenStr.indexOf(']');
+      const linkText = tokenStr.slice(1, closingBracket);
+      const url = tokenStr.slice(closingBracket + 2, -1);
+      tokens.push({ type: 'link', text: linkText, url: url });
+    }
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    tokens.push({ type: 'text', content: text.slice(lastIndex) });
+  }
+  return tokens;
+}
 
-  // Build the body content
-  let bodyContent = '';
+function parseMarkdownNodes(text) {
+  const lines = text.split('\n');
+  const doc = { name: '', contact: '', sections: [] };
+  let currentSection = null;
 
-  for (const section of sections) {
-    if (section.heading) {
-      bodyContent += `<div class="section">
-        <h2 class="section-title">${escapeHtml(section.heading)}</h2>
-        <div class="section-content">`;
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) continue;
 
-      for (const line of section.lines) {
-        if (line.trim().startsWith('•') || line.trim().startsWith('-') || line.trim().startsWith('–')) {
-          bodyContent += `<div class="bullet-item">${escapeHtml(line.trim())}</div>`;
-        } else if (line.trim()) {
-          bodyContent += `<p>${escapeHtml(line.trim())}</p>`;
-        }
+    if (line.startsWith('# ')) {
+      doc.name = line.substring(2).trim();
+    } else if (line.startsWith('## ')) {
+      currentSection = { title: line.substring(3).trim(), items: [] };
+      doc.sections.push(currentSection);
+    } else if (line.startsWith('### ')) {
+      const content = line.substring(4).trim();
+      let left = content, right = '';
+      if (content.includes('||')) {
+        const parts = content.split('||');
+        left = parts[0].trim();
+        right = parts[1].trim();
       }
-
-      bodyContent += `</div></div>`;
+      if (currentSection) {
+        currentSection.items.push({ type: 'subheading', left, right });
+      }
+    } else if (line.startsWith('- ') || line.startsWith('* ') || line.startsWith('• ')) {
+      const content = line.replace(/^[\-\*\•]\s*/, '').trim();
+      if (currentSection) {
+        currentSection.items.push({ type: 'bullet', content });
+      }
     } else {
-      // Content before any heading (name / contact info)
-      for (const line of section.lines) {
-        if (section.lines.indexOf(line) === 0 && !section.heading) {
-          bodyContent += `<h1 class="name">${escapeHtml(line.trim())}</h1>`;
-        } else if (line.trim()) {
-          bodyContent += `<p class="contact-info">${escapeHtml(line.trim())}</p>`;
+      if (currentSection) {
+        currentSection.items.push({ type: 'paragraph', content: line });
+      } else {
+        if (!doc.contact && doc.name) {
+          doc.contact = line;
+        } else if (!doc.name) {
+          doc.name = line; // fallback
+        } else {
+          doc.contact += ' | ' + line;
         }
       }
     }
   }
+  return doc;
+}
 
-  // Replace placeholder in template
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function generateInlineHtml(text) {
+  const tokens = parseInline(text);
+  let html = '';
+  for (const t of tokens) {
+    if (t.type === 'bold') {
+      if (t.content.includes(':')) {
+         html += `<span class="bold-blue">${escapeHtml(t.content)}</span>`;
+      } else {
+         html += `<strong>${escapeHtml(t.content)}</strong>`;
+      }
+    } else if (t.type === 'link') {
+      html += `<a href="${escapeHtml(t.url)}">${escapeHtml(t.text)}</a>`;
+    } else {
+      let tHtml = escapeHtml(t.content);
+      // Replace standalone pipes outside links 
+      tHtml = tHtml.replace(/\|/g, '<span style="margin: 0 4px; color: #1a365d;">|</span>');
+      html += tHtml;
+    }
+  }
+  return html;
+}
+
+// ── HTML & PDF ──────────────────────────────────────────────────
+
+function buildHTML(resumeText, analysis = {}) {
+  const templatePath = path.join(TEMPLATE_DIR, 'resumeTemplate.html');
+  let html = fs.readFileSync(templatePath, 'utf-8');
+
+  const ast = parseMarkdownNodes(resumeText);
+  let bodyContent = '';
+
+  bodyContent += `<h1 class="name">${generateInlineHtml(ast.name)}</h1>`;
+  
+  if (ast.contact) {
+    const contactParts = ast.contact.split('|').map(p => p.trim());
+    const mid = Math.ceil(contactParts.length / 2);
+    const leftContact = contactParts.slice(0, mid).join(' | ');
+    const rightContact = contactParts.slice(mid).join(' | ');
+    bodyContent += `<div class="contact-info">
+      <div>${generateInlineHtml(leftContact)}</div>
+      <div>${generateInlineHtml(rightContact)}</div>
+    </div>`;
+  }
+
+  for (const section of ast.sections) {
+    bodyContent += `<div class="section">
+      <h2 class="section-title">${generateInlineHtml(section.title)}</h2>
+      <div class="section-content">`;
+    
+    for (const item of section.items) {
+      if (item.type === 'subheading') {
+        bodyContent += `<div class="subheading-row">
+            <span class="subheading-left">${generateInlineHtml(item.left)}</span>
+            <span class="subheading-right">${generateInlineHtml(item.right)}</span>
+          </div>`;
+      } else if (item.type === 'bullet') {
+        bodyContent += `<div class="bullet-item">${generateInlineHtml(item.content)}</div>`;
+      } else if (item.type === 'paragraph') {
+        bodyContent += `<p>${generateInlineHtml(item.content)}</p>`;
+      }
+    }
+    bodyContent += `</div></div>`;
+  }
+
   html = html.replace('{{RESUME_CONTENT}}', bodyContent);
   html = html.replace('{{SCORE}}', analysis.compositeScore || 'N/A');
 
   return html;
 }
 
-/**
- * Parse resume text into logical sections based on headings.
- */
-function parseResumeIntoSections(text) {
-  const lines = text.split('\n');
-  const sections = [];
-  let currentSection = { heading: null, lines: [] };
-
-  for (const line of lines) {
-    // Detect section headings (all caps lines or lines with common heading patterns)
-    const trimmed = line.trim();
-    if (
-      trimmed &&
-      (trimmed === trimmed.toUpperCase() && trimmed.length > 2 && /[A-Z]/.test(trimmed)) ||
-      /^(PROFESSIONAL SUMMARY|SKILLS|EXPERIENCE|PROFESSIONAL EXPERIENCE|EDUCATION|CERTIFICATIONS|PROJECTS|AWARDS|OBJECTIVE|CONTACT)/i.test(trimmed)
-    ) {
-      if (currentSection.lines.length > 0 || currentSection.heading) {
-        sections.push(currentSection);
-      }
-      currentSection = { heading: trimmed, lines: [] };
-    } else {
-      currentSection.lines.push(line);
-    }
-  }
-
-  if (currentSection.lines.length > 0 || currentSection.heading) {
-    sections.push(currentSection);
-  }
-
-  return sections;
-}
-
-/**
- * Generate a PDF from the rewritten resume.
- * 
- * @param {string} resumeText — AI-rewritten resume
- * @param {Object} analysis   — Analysis result (for metadata)
- * @returns {Promise<string>} — Path to generated PDF file
- */
 async function generatePDF(resumeText, analysis = {}) {
   const html     = buildHTML(resumeText, analysis);
   const filename = `improved_resume_${uuidv4().slice(0, 8)}.pdf`;
@@ -119,7 +180,8 @@ async function generatePDF(resumeText, analysis = {}) {
   try {
     browser = await puppeteer.launch({
       headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
     });
 
     const page = await browser.newPage();
@@ -128,7 +190,7 @@ async function generatePDF(resumeText, analysis = {}) {
     await page.pdf({
       path: filePath,
       format: 'A4',
-      margin: { top: '0.5in', right: '0.5in', bottom: '0.5in', left: '0.5in' },
+      margin: { top: '0.4in', right: '0.5in', bottom: '0.4in', left: '0.5in' },
       printBackground: true,
     });
 
@@ -142,129 +204,108 @@ async function generatePDF(resumeText, analysis = {}) {
   }
 }
 
-/**
- * Generate a DOCX from the rewritten resume.
- * 
- * @param {string} resumeText — AI-rewritten resume
- * @param {Object} analysis   — Analysis result
- * @returns {Promise<string>} — Path to generated DOCX file
- */
+// ── DOCX GENERATOR ──────────────────────────────────────────────
+
+function generateInlineDocx(text, defaultColor = '000000', defaultSize = 22, isBoldBlueOption = false) {
+  const tokens = parseInline(text);
+  const runs = [];
+  
+  for (const t of tokens) {
+    if (t.type === 'bold') {
+      const color = (isBoldBlueOption && t.content.includes(':')) ? '1a365d' : defaultColor;
+      runs.push(new TextRun({ text: t.content, bold: true, size: defaultSize, color, font: 'Calibri' }));
+    } else if (t.type === 'link') {
+      runs.push(new ExternalHyperlink({
+        children: [
+          new TextRun({ text: t.text, size: defaultSize, color: '0000EE', underline: { type: UnderlineType.SINGLE }, font: 'Calibri' })
+        ],
+        link: t.url
+      }));
+    } else {
+      runs.push(new TextRun({ text: t.content, size: defaultSize, color: defaultColor, font: 'Calibri' }));
+    }
+  }
+  return runs;
+}
+
 async function generateDOCX(resumeText, analysis = {}) {
   const filename = `improved_resume_${uuidv4().slice(0, 8)}.docx`;
   const filePath = path.join(TEMP_DIR, filename);
 
   try {
-    const sections = parseResumeIntoSections(resumeText);
+    const ast = parseMarkdownNodes(resumeText);
     const docChildren = [];
 
-    for (const section of sections) {
-      if (section.heading) {
-        // Section heading
-        docChildren.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: section.heading,
-                bold: true,
-                size: 26,
-                font: 'Calibri',
-                color: '1a365d',
-              }),
-            ],
-            heading: HeadingLevel.HEADING_2,
-            spacing: { before: 300, after: 100 },
-            border: {
-              bottom: {
-                color: '2b6cb0',
-                size: 1,
-                style: BorderStyle.SINGLE,
-                space: 1,
-              },
-            },
-          })
-        );
+    // Header - Name
+    if (ast.name) {
+      docChildren.push(new Paragraph({
+        children: generateInlineDocx(ast.name, '1a365d', 36),
+        spacing: { after: 60 }
+      }));
+    }
 
-        // Section content
-        for (const line of section.lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
+    // Header - Contact
+    if (ast.contact) {
+       const contactParts = ast.contact.split('|').map(p => p.trim());
+       const mid = Math.ceil(contactParts.length / 2);
+       const leftContact = contactParts.slice(0, mid).join(' | ');
+       const rightContact = contactParts.slice(mid).join(' | ');
+       
+       docChildren.push(new Paragraph({
+         children: [
+           ...generateInlineDocx(leftContact + " \t ", '000000', 20),
+           ...generateInlineDocx(rightContact, '000000', 20)
+         ],
+         tabStops: [{ type: TabStopType.RIGHT, position: 10000 }],
+         spacing: { after: 200 }
+       }));
+    }
 
-          const isBullet = trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.startsWith('–');
-
-          docChildren.push(
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: isBullet ? trimmed.replace(/^[•\-–]\s*/, '') : trimmed,
-                  size: 22,
-                  font: 'Calibri',
-                }),
-              ],
-              bullet: isBullet ? { level: 0 } : undefined,
-              spacing: { after: 60 },
-            })
-          );
+    // Sections
+    for (const section of ast.sections) {
+      docChildren.push(new Paragraph({
+        children: generateInlineDocx(section.title.toUpperCase(), '1a365d', 24),
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: 200, after: 100 },
+        border: {
+          bottom: { color: '1a365d', size: 1, style: BorderStyle.SINGLE, space: 1 }
         }
-      } else {
-        // Header section (name, contact)
-        for (let i = 0; i < section.lines.length; i++) {
-          const line = section.lines[i].trim();
-          if (!line) continue;
+      }));
 
-          if (i === 0) {
-            // Name
-            docChildren.push(
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: line,
-                    bold: true,
-                    size: 36,
-                    font: 'Calibri',
-                    color: '1a365d',
-                  }),
-                ],
-                alignment: AlignmentType.CENTER,
-                spacing: { after: 60 },
-              })
-            );
-          } else {
-            // Contact info
-            docChildren.push(
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: line,
-                    size: 20,
-                    font: 'Calibri',
-                    color: '4a5568',
-                  }),
-                ],
-                alignment: AlignmentType.CENTER,
-                spacing: { after: 40 },
-              })
-            );
-          }
+      for (const item of section.items) {
+        if (item.type === 'subheading') {
+           const subLeft = generateInlineDocx(item.left, '1a365d', 22, false);
+           subLeft.forEach(run => run.bold = true);
+           
+           docChildren.push(new Paragraph({
+             children: [
+               ...subLeft,
+               new TextRun({ text: '\t' }),
+               ...generateInlineDocx(item.right, '000000', 20)
+             ],
+             tabStops: [{ type: TabStopType.RIGHT, position: 10000 }],
+             spacing: { after: 60 }
+           }));
+        } else if (item.type === 'bullet') {
+           docChildren.push(new Paragraph({
+             children: generateInlineDocx(item.content, '000000', 20, true),
+             bullet: { level: 0 },
+             spacing: { after: 60 }
+           }));
+        } else if (item.type === 'paragraph') {
+           docChildren.push(new Paragraph({
+             children: generateInlineDocx(item.content, '000000', 20, true),
+             spacing: { after: 60 }
+           }));
         }
       }
     }
 
     const doc = new Document({
-      sections: [
-        {
-          properties: {
-            page: {
-              margin: {
-                top: 720,
-                right: 720,
-                bottom: 720,
-                left: 720,
-              },
-            },
-          },
-          children: docChildren,
-        },
-      ],
+      sections: [{
+        properties: { page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
+        children: docChildren,
+      }]
     });
 
     const buffer = await Packer.toBuffer(doc);
@@ -276,18 +317,6 @@ async function generateDOCX(resumeText, analysis = {}) {
     logger.error(`DOCX generation failed: ${err.message}`);
     throw new Error(`Could not generate DOCX: ${err.message}`);
   }
-}
-
-/**
- * Escape HTML special characters.
- */
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 module.exports = {
